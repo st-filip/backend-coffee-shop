@@ -24,8 +24,7 @@ model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
   password  String
-  ime       String
-  prezime   String
+  fullName  String
   role      Role     @default(USER)
   orders    Order[]
 }
