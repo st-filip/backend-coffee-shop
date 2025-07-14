@@ -27,6 +27,7 @@ model User {
   fullName  String
   role      Role     @default(USER)
   orders    Order[]
+  refreshToken String?
 }
 
 model Product {

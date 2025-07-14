@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
@@ -38,6 +42,48 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
 
+    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: hashedRefreshToken },
+    });
+
     return { accessToken, refreshToken };
+  }
+
+  async refresh(userId: number, oldRefreshToken: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.refreshToken) {
+      throw new ForbiddenException('Access Denied');
+    }
+
+    let decoded;
+    try {
+      decoded = this.jwtService.verify(oldRefreshToken, {
+        secret: process.env.JWT_SECRET,
+      });
+    } catch (error) {
+      throw new ForbiddenException('Refresh token expired or invalid');
+    }
+
+    const isValid = await bcrypt.compare(oldRefreshToken, user.refreshToken);
+    if (!isValid) {
+      throw new ForbiddenException('Invalid refresh token');
+    }
+
+    const payload = { sub: user.id, email: user.email, role: user.role };
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
+    const newRefreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+
+    const newHashedRefresh = await bcrypt.hash(newRefreshToken, 10);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { refreshToken: newHashedRefresh },
+    });
+
+    return { accessToken, refreshToken: newRefreshToken };
   }
 }
