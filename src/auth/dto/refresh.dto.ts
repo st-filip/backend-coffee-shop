@@ -1,4 +1,4 @@
 export class RefreshDto {
   userId: number;
-  refreshToken: string;
+  refreshTokenJti: string;
 }

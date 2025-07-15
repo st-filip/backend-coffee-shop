@@ -76,7 +76,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: jti },
+      data: { refreshTokenJti: jti },
     });
 
     return { accessToken, refreshToken };
@@ -87,7 +87,7 @@ export class AuthService {
       where: { id: userId },
     });
 
-    if (!user || !user.refreshToken) {
+    if (!user || !user.refreshTokenJti) {
       throw new ForbiddenException('Access Denied');
     }
 
@@ -100,10 +100,10 @@ export class AuthService {
       throw new ForbiddenException('Refresh token expired or invalid');
     }
 
-    if (decoded.jti !== user.refreshToken) {
+    if (decoded.jti !== user.refreshTokenJti) {
       throw new ForbiddenException('Invalid refresh token');
     } else {
-      console.log(decoded.jti + '        ' + user.refreshToken);
+      console.log(decoded.jti + '        ' + user.refreshTokenJti);
     }
 
     const newJti = randomUUID();
@@ -133,7 +133,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: newJti },
+      data: { refreshTokenJti: newJti },
     });
 
     return { accessToken, refreshToken: newRefreshToken };
@@ -153,7 +153,7 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { refreshToken: null },
+      data: { refreshTokenJti: null },
     });
   }
 

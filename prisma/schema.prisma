@@ -27,7 +27,7 @@ model User {
   fullName  String
   role      Role     @default(USER)
   orders    Order[]
-  refreshToken String?
+  refreshTokenJti String?
 }
 
 model Product {
@@ -35,7 +35,7 @@ model Product {
   name        String
   description String?
   price       Float
-  imageUrl    String
+  imageUrl    String?
   stock       Int      @default(0)
   orders      Order[]
 }

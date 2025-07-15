@@ -18,7 +18,7 @@ export class UsersService {
       },
     });
 
-    const { password, refreshToken, ...result } = user;
+    const { password, refreshTokenJti, ...result } = user;
     return result;
   }
 
@@ -57,7 +57,7 @@ export class UsersService {
       data: dataToUpdate,
     });
 
-    const { password, refreshToken, ...result } = user;
+    const { password, refreshTokenJti, ...result } = user;
     return result;
   }
 
@@ -66,7 +66,7 @@ export class UsersService {
       where: { id },
     });
 
-    const { password, refreshToken, ...result } = user;
+    const { password, refreshTokenJti, ...result } = user;
     return result;
   }
 }
