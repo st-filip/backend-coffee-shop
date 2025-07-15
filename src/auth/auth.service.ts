@@ -8,13 +8,24 @@ import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { RegisterAuthDto } from './dto/register-auth.dto';
 import { LoginAuthDto } from './dto/login-auth.dto';
+import Redis from 'ioredis';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class AuthService {
+  private redisClient: Redis;
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
-  ) {}
+  ) {
+    this.redisClient = new Redis({
+      host: process.env.REDIS_HOST,
+      port: parseInt(process.env.REDIS_PORT!),
+      username: process.env.REDIS_USERNAME,
+      password: process.env.REDIS_PASSWORD,
+    });
+  }
 
   async register(dto: RegisterAuthDto) {
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -38,14 +49,34 @@ export class AuthService {
     const isMatch = await bcrypt.compare(dto.password, user.password);
     if (!isMatch) throw new UnauthorizedException('Invalid credentials');
 
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-    const refreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+    const jti = randomUUID();
 
-    const hashedRefreshToken = await bcrypt.hash(refreshToken, 10);
+    const accessPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      jti: jti,
+      token_type: 'access',
+    };
+
+    const refreshPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      jti: jti,
+      token_type: 'refresh',
+    };
+
+    const accessToken = this.jwtService.sign(accessPayload, {
+      expiresIn: '15m',
+    });
+    const refreshToken = this.jwtService.sign(refreshPayload, {
+      expiresIn: '7d',
+    });
+
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: hashedRefreshToken },
+      data: { refreshToken: jti },
     });
 
     return { accessToken, refreshToken };
@@ -69,21 +100,79 @@ export class AuthService {
       throw new ForbiddenException('Refresh token expired or invalid');
     }
 
-    const isValid = await bcrypt.compare(oldRefreshToken, user.refreshToken);
-    if (!isValid) {
+    if (decoded.jti !== user.refreshToken) {
       throw new ForbiddenException('Invalid refresh token');
+    } else {
+      console.log(decoded.jti + '        ' + user.refreshToken);
     }
 
-    const payload = { sub: user.id, email: user.email, role: user.role };
-    const accessToken = this.jwtService.sign(payload, { expiresIn: '15m' });
-    const newRefreshToken = this.jwtService.sign(payload, { expiresIn: '7d' });
+    const newJti = randomUUID();
 
-    const newHashedRefresh = await bcrypt.hash(newRefreshToken, 10);
+    const accessPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      jti: newJti,
+      token_type: 'access',
+    };
+
+    const refreshPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      jti: newJti,
+      token_type: 'refresh',
+    };
+
+    const accessToken = this.jwtService.sign(accessPayload, {
+      expiresIn: '15m',
+    });
+    const newRefreshToken = this.jwtService.sign(refreshPayload, {
+      expiresIn: '7d',
+    });
+
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: newHashedRefresh },
+      data: { refreshToken: newJti },
     });
 
     return { accessToken, refreshToken: newRefreshToken };
+  }
+
+  async logout(accessToken: string) {
+    const decoded = this.jwtService.verify(accessToken, {
+      secret: process.env.JWT_SECRET,
+    });
+
+    const userId = decoded.sub;
+    const jti = decoded.jti;
+    const exp = decoded.exp;
+    const ttl = exp - Math.floor(Date.now() / 1000);
+
+    await this.redisClient.set(`blacklist_${jti}`, 'true', 'EX', ttl);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { refreshToken: null },
+    });
+  }
+
+  async validateAccessToken(accessToken: string) {
+    const decoded = this.jwtService.verify(accessToken, {
+      secret: process.env.JWT_SECRET,
+    });
+
+    const jti = decoded.jti;
+    const isBlacklisted = await this.redisClient.get(`blacklist_${jti}`);
+    if (isBlacklisted) {
+      throw new UnauthorizedException('Token is blacklisted');
+    }
+
+    return decoded;
+  }
+
+  async isBlacklisted(jti: string): Promise<boolean> {
+    const result = await this.redisClient.get(`blacklist_${jti}`);
+    return !!result;
   }
 }
