@@ -82,15 +82,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  async refresh(userId: number, oldRefreshToken: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || !user.refreshTokenJti) {
-      throw new ForbiddenException('Access Denied');
-    }
-
+  async refresh(oldRefreshToken: string) {
     let decoded;
     try {
       decoded = this.jwtService.verify(oldRefreshToken, {
@@ -100,10 +92,18 @@ export class AuthService {
       throw new ForbiddenException('Refresh token expired or invalid');
     }
 
+    const userId = decoded.sub;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || !user.refreshTokenJti) {
+      throw new ForbiddenException('Access Denied');
+    }
+
     if (decoded.jti !== user.refreshTokenJti) {
       throw new ForbiddenException('Invalid refresh token');
-    } else {
-      console.log(decoded.jti + '        ' + user.refreshTokenJti);
     }
 
     const newJti = randomUUID();
